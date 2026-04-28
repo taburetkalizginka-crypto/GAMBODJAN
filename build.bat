@@ -3,6 +3,12 @@ setlocal enabledelayedexpansion
 chcp 65001 >nul 2>nul
 title GAMBODJAN Build
 
+echo.
+echo ==========================================
+echo   GAMBODJAN Build Script
+echo ==========================================
+echo.
+
 :: ============================
 ::  Find Visual Studio
 :: ============================
@@ -23,31 +29,83 @@ if not defined VS_PATH (
 echo [+] Visual Studio: %VS_PATH%
 
 :: ============================
-::  Setup VS environment
+::  Find vcvarsall.bat
 :: ============================
+set "VCVARS="
+
+:: Try standard path
 if exist "%VS_PATH%\VC\Auxiliary\Build\vcvarsall.bat" (
-    call "%VS_PATH%\VC\Auxiliary\Build\vcvarsall.bat" x64 >nul 2>nul
-    echo [+] VS environment configured (x64)
-) else (
-    echo [!] vcvarsall.bat not found
+    set "VCVARS=%VS_PATH%\VC\Auxiliary\Build\vcvarsall.bat"
+)
+
+:: Try alternative paths
+if not defined VCVARS (
+    for /f "usebackq delims=" %%f in (`dir /s /b "%VS_PATH%\vcvarsall.bat" 2^>nul`) do (
+        if not defined VCVARS set "VCVARS=%%f"
+    )
+)
+
+if not defined VCVARS (
+    echo [!] vcvarsall.bat not found!
+    echo     You need to install "Desktop development with C++" workload.
+    echo     Open Visual Studio Installer and add this workload.
+    echo.
+    echo     Path checked: %VS_PATH%\VC\Auxiliary\Build\vcvarsall.bat
     pause
     exit /b 1
 )
 
+echo [+] vcvarsall: %VCVARS%
+call "%VCVARS%" x64 >nul 2>nul
+if %ERRORLEVEL% NEQ 0 (
+    echo [!] Failed to configure VS environment
+    call "%VCVARS%" x64
+    pause
+    exit /b 1
+)
+echo [+] VS environment configured (x64)
+
 :: ============================
-::  Check CMake
+::  Find CMake
 :: ============================
 where cmake >nul 2>nul
 if %ERRORLEVEL% NEQ 0 (
-    if exist "%VS_PATH%\Common7\IDE\CommonExtensions\Microsoft\CMake\CMake\bin\cmake.exe" (
-        set "PATH=%VS_PATH%\Common7\IDE\CommonExtensions\Microsoft\CMake\CMake\bin;%PATH%"
+    :: Try VS bundled CMake
+    set "VS_CMAKE=%VS_PATH%\Common7\IDE\CommonExtensions\Microsoft\CMake\CMake\bin"
+    if exist "!VS_CMAKE!\cmake.exe" (
+        set "PATH=!VS_CMAKE!;%PATH%"
     ) else (
-        echo [!] CMake not found. Download: https://cmake.org/download/
+        echo [!] CMake not found
+        echo     CMake should come with Visual Studio C++ workload.
+        echo     Or download: https://cmake.org/download/
         pause
         exit /b 1
     )
 )
 echo [+] CMake OK
+
+:: ============================
+::  Find Ninja (optional)
+:: ============================
+set "USE_NINJA=0"
+where ninja >nul 2>nul
+if %ERRORLEVEL% EQU 0 (
+    set "USE_NINJA=1"
+) else (
+    set "VS_NINJA=%VS_PATH%\Common7\IDE\CommonExtensions\Microsoft\CMake\Ninja"
+    if exist "!VS_NINJA!\ninja.exe" (
+        set "PATH=!VS_NINJA!;%PATH%"
+        set "USE_NINJA=1"
+    )
+)
+
+:: ============================
+::  Clean old build if needed
+:: ============================
+if exist "build\CMakeCache.txt" (
+    echo [*] Cleaning old build...
+    rmdir /s /q build >nul 2>nul
+)
 
 :: ============================
 ::  Configure
@@ -56,26 +114,19 @@ echo.
 echo [1/2] CMake configure...
 if not exist "build" mkdir build
 
-cmake -B build -G "Ninja" -DCMAKE_BUILD_TYPE=Release >nul 2>nul
+if "%USE_NINJA%"=="1" (
+    echo [+] Using Ninja generator
+    cmake -B build -G "Ninja" -DCMAKE_BUILD_TYPE=Release 2>&1
+) else (
+    echo [+] Using Visual Studio generator
+    cmake -B build -G "Visual Studio 17 2022" -A x64 2>&1
+)
 
 if %ERRORLEVEL% NEQ 0 (
-    echo [*] Ninja not found, trying Visual Studio generator...
-
-    set "GEN="
-    for %%G in ("Visual Studio 17 2022" "Visual Studio 16 2019") do (
-        if not defined GEN (
-            cmake -B build -G "%%~G" -A x64 >nul 2>nul
-            if !ERRORLEVEL! EQU 0 set "GEN=%%~G"
-        )
-    )
-
-    if not defined GEN (
-        echo [!] CMake configuration failed
-        cmake -B build -G "Visual Studio 17 2022" -A x64
-        pause
-        exit /b 1
-    )
-    echo [+] Generator: !GEN!
+    echo.
+    echo [!] CMake configuration failed!
+    pause
+    exit /b 1
 )
 echo [+] Configure OK
 
@@ -84,7 +135,12 @@ echo [+] Configure OK
 :: ============================
 echo.
 echo [2/2] Building...
-cmake --build build --config Release -- /m /v:m
+if "%USE_NINJA%"=="1" (
+    cmake --build build --config Release
+) else (
+    cmake --build build --config Release -- /m /v:m
+)
+
 if %ERRORLEVEL% NEQ 0 (
     echo.
     echo [!] Build failed! Check errors above.
