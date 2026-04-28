@@ -498,6 +498,10 @@ std::uintptr_t util::find_pattern( const char* smodule, const char* pattern, con
 	const auto start = std::chrono::high_resolution_clock::now( );
 
 	const auto begin = (uintptr_t)util::get_module_base_ansi( smodule );
+	if ( !begin ) {
+		if ( !is_dbg ) spdlog::error( "{}: module '{}' not loaded!\n", name, smodule );
+		return NULL;
+	}
 	const auto dwSizeOfImage = PIMAGE_NT_HEADERS( (uint8_t*)( begin + PIMAGE_DOS_HEADER( begin )->e_lfanew ) )->OptionalHeader.SizeOfImage;
 	const auto end = begin + dwSizeOfImage;
 
@@ -521,6 +525,10 @@ std::uintptr_t util::find_pattern( HINSTANCE pmodule, const char* pattern, const
 	const auto start = std::chrono::high_resolution_clock::now( );
 
 	const auto begin = (uintptr_t)pmodule;
+	if ( !begin ) {
+		if ( !is_dbg ) spdlog::error( "{}: module handle is null!\n", name );
+		return NULL;
+	}
 	const auto size_of_image = PIMAGE_NT_HEADERS( (uint8_t*)( begin + PIMAGE_DOS_HEADER( begin )->e_lfanew ) )->OptionalHeader.SizeOfImage;
 	const auto end = begin + size_of_image;
 

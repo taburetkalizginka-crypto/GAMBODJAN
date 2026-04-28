@@ -152,15 +152,46 @@ static DWORD WINAPI cheat_thread( LPVOID hModule ) {
 	spdlog::set_level( spdlog::level::debug );
 #endif
 
-	// Wait for critical game modules to load before initialization
-	while ( !util::get_module_base_wchar( L"client.dll" ) ||
-			!util::get_module_base_wchar( L"tier0.dll" ) ||
-			!util::get_module_base_ansi( "steam_api64.dll" ) ) {
+	spdlog::info( "Waiting for game modules...\n" );
+
+	// Wait for ALL required game modules to load
+	const wchar_t* required_modules[] = {
+		L"client.dll",
+		L"tier0.dll",
+		L"networksystem.dll",
+		L"particles.dll",
+		L"GameOverlayRenderer64.dll",
+	};
+
+	for ( const auto& mod : required_modules ) {
+		int attempts = 0;
+		while ( !util::get_module_base_wchar( mod ) ) {
+			Sleep( 500 );
+			attempts++;
+			if ( attempts > 120 ) { // 60 seconds timeout
+				spdlog::error( "Timeout waiting for module: {}\n", util::utf8_encode( mod ) );
+				break;
+			}
+		}
+	}
+	// Also need steam_api64.dll
+	while ( !util::get_module_base_ansi( "steam_api64.dll" ) ) {
 		Sleep( 500 );
 	}
-	Sleep( 2000 );
 
-	start_init( );
+	Sleep( 3000 ); // Extra delay for modules to fully initialize
+
+	spdlog::info( "All modules loaded, starting init...\n" );
+
+	__try {
+		start_init( );
+	}
+	__except ( EXCEPTION_EXECUTE_HANDLER ) {
+		spdlog::critical( "CRASH during initialization! Exception code: 0x{:X}\n", GetExceptionCode( ) );
+		spdlog::critical( "This usually means game patterns/offsets are outdated.\n" );
+		MessageBoxA( nullptr, "Cheat crashed during init.\nPatterns may be outdated for this Dota 2 version.",
+			"GAMBODJAN Error", MB_ICONERROR );
+	}
 	return 0;
 }
 
