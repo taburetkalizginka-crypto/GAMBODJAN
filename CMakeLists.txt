@@ -1,7 +1,5 @@
-cmake_minimum_required(VERSION 3.16)
+cmake_minimum_required(VERSION 3.15)
 project(GAMBODJAN LANGUAGES CXX C)
-
-include(FetchContent)
 
 if(WIN32)
     set(CMAKE_CXX_STANDARD 20)
@@ -98,60 +96,18 @@ if(WIN32)
 
     # --- External dependencies for the full DLL ---
     # protobuf: required for .pb.cc generated message files
+    # Try vcpkg / system protobuf; fall back to header-only stub
     find_package(Protobuf QUIET)
     if(NOT Protobuf_FOUND)
+        # If protobuf is not installed, try pkg-config
         find_package(PkgConfig QUIET)
         if(PkgConfig_FOUND)
             pkg_check_modules(PROTOBUF QUIET protobuf)
         endif()
     endif()
 
-    if(Protobuf_FOUND)
-        set(GAMBODJAN_PROTOBUF_TARGET protobuf::libprotobuf)
-    elseif(PROTOBUF_FOUND)
-        set(GAMBODJAN_PROTOBUF_TARGET ${PROTOBUF_LIBRARIES})
-    else()
-        message(STATUS "Protobuf not found — downloading protobuf 3.21.12 via FetchContent...")
-        set(protobuf_BUILD_TESTS OFF CACHE BOOL "" FORCE)
-        set(protobuf_BUILD_CONFORMANCE OFF CACHE BOOL "" FORCE)
-        set(protobuf_BUILD_EXAMPLES OFF CACHE BOOL "" FORCE)
-        set(protobuf_BUILD_PROTOC_BINARIES OFF CACHE BOOL "" FORCE)
-        set(protobuf_MSVC_STATIC_RUNTIME OFF CACHE BOOL "" FORCE)
-        set(protobuf_WITH_ZLIB OFF CACHE BOOL "" FORCE)
-        FetchContent_Declare(
-            protobuf
-            GIT_REPOSITORY https://github.com/protocolbuffers/protobuf.git
-            GIT_TAG        v3.21.12
-            GIT_SHALLOW    TRUE
-            SOURCE_SUBDIR  cmake
-        )
-        FetchContent_MakeAvailable(protobuf)
-        set(GAMBODJAN_PROTOBUF_TARGET libprotobuf)
-    endif()
-
     # curl: required for overwolf.cc (player lookup)
     find_package(CURL QUIET)
-
-    if(CURL_FOUND)
-        set(GAMBODJAN_CURL_TARGET CURL::libcurl)
-    else()
-        message(STATUS "CURL not found — downloading curl 8.1.2 via FetchContent...")
-        set(BUILD_CURL_EXE OFF CACHE BOOL "" FORCE)
-        set(BUILD_SHARED_LIBS_SAVE ${BUILD_SHARED_LIBS})
-        set(BUILD_SHARED_LIBS OFF CACHE BOOL "" FORCE)
-        set(BUILD_TESTING OFF CACHE BOOL "" FORCE)
-        set(CURL_USE_SCHANNEL ON CACHE BOOL "" FORCE)
-        set(HTTP_ONLY ON CACHE BOOL "" FORCE)
-        FetchContent_Declare(
-            curl
-            GIT_REPOSITORY https://github.com/curl/curl.git
-            GIT_TAG        curl-8_1_2
-            GIT_SHALLOW    TRUE
-        )
-        FetchContent_MakeAvailable(curl)
-        set(BUILD_SHARED_LIBS ${BUILD_SHARED_LIBS_SAVE} CACHE BOOL "" FORCE)
-        set(GAMBODJAN_CURL_TARGET libcurl)
-    endif()
 
     # --- GAMBODJAN_dll.dll (REAL cheat DLL — hooks game D3D, full features) ---
     set(CHEAT_SOURCES
@@ -188,14 +144,32 @@ if(WIN32)
         d3d11 dxgi dwmapi wininet ws2_32
     )
 
-    # Link protobuf and curl (found via find_package or fetched via FetchContent)
-    target_link_libraries(GAMBODJAN_DLL PRIVATE ${GAMBODJAN_PROTOBUF_TARGET})
-    target_link_libraries(GAMBODJAN_DLL PRIVATE ${GAMBODJAN_CURL_TARGET})
+    # Link protobuf if found
+    if(Protobuf_FOUND)
+        target_link_libraries(GAMBODJAN_DLL PRIVATE protobuf::libprotobuf)
+    elseif(PROTOBUF_FOUND)
+        target_include_directories(GAMBODJAN_DLL PRIVATE ${PROTOBUF_INCLUDE_DIRS})
+        target_link_libraries(GAMBODJAN_DLL PRIVATE ${PROTOBUF_LIBRARIES})
+    else()
+        message(WARNING
+            "Protobuf NOT found. GAMBODJAN_DLL will have linker errors.\n"
+            "Install protobuf via vcpkg: vcpkg install protobuf:x64-windows\n"
+            "Or use the overlay DLL (GAMBODJAN_Overlay) which works without protobuf.")
+    endif()
+
+    # Link curl if found
+    if(CURL_FOUND)
+        target_link_libraries(GAMBODJAN_DLL PRIVATE CURL::libcurl)
+    else()
+        message(WARNING
+            "CURL NOT found. Overwolf feature will have linker errors.\n"
+            "Install curl via vcpkg: vcpkg install curl:x64-windows\n"
+            "Or use the overlay DLL (GAMBODJAN_Overlay) which works without curl.")
+    endif()
 
     if(MSVC)
         target_link_options(GAMBODJAN_DLL PRIVATE
             /LTCG
-            /INCREMENTAL:NO
             /IGNORE:4217
             /IGNORE:4049
         )
