@@ -502,8 +502,18 @@ std::uintptr_t util::find_pattern( const char* smodule, const char* pattern, con
 		if ( !is_dbg ) spdlog::error( "{}: module '{}' not loaded!\n", name, smodule );
 		return NULL;
 	}
-	const auto dwSizeOfImage = PIMAGE_NT_HEADERS( (uint8_t*)( begin + PIMAGE_DOS_HEADER( begin )->e_lfanew ) )->OptionalHeader.SizeOfImage;
+	const auto dos = PIMAGE_DOS_HEADER( begin );
+	if ( dos->e_magic != 0x5A4D ) {
+		if ( !is_dbg ) spdlog::error( "{}: module '{}' bad DOS header!\n", name, smodule );
+		return NULL;
+	}
+	const auto dwSizeOfImage = PIMAGE_NT_HEADERS( (uint8_t*)( begin + dos->e_lfanew ) )->OptionalHeader.SizeOfImage;
 	const auto end = begin + dwSizeOfImage;
+
+	if ( !is_dbg ) {
+		spdlog::info( "{}: scanning {} (base=0x{:X}, size=0x{:X})\n", name, smodule, begin, dwSizeOfImage );
+		std::cout.flush( );
+	}
 
 	if ( const auto result = reinterpret_cast<std::uintptr_t>( find_pattern_internal( begin, end, format ? ParseCombo( pattern ).c_str( ) : pattern ) ); result ) {
 		if ( !is_dbg ) {
@@ -527,8 +537,18 @@ std::uintptr_t util::find_pattern( HINSTANCE pmodule, const char* pattern, const
 		if ( !is_dbg ) spdlog::error( "{}: module handle is null!\n", name );
 		return NULL;
 	}
-	const auto size_of_image = PIMAGE_NT_HEADERS( (uint8_t*)( begin + PIMAGE_DOS_HEADER( begin )->e_lfanew ) )->OptionalHeader.SizeOfImage;
+	const auto dos = PIMAGE_DOS_HEADER( begin );
+	if ( dos->e_magic != 0x5A4D ) {
+		if ( !is_dbg ) spdlog::error( "{}: bad DOS header at 0x{:X}!\n", name, begin );
+		return NULL;
+	}
+	const auto size_of_image = PIMAGE_NT_HEADERS( (uint8_t*)( begin + dos->e_lfanew ) )->OptionalHeader.SizeOfImage;
 	const auto end = begin + size_of_image;
+
+	if ( !is_dbg ) {
+		spdlog::info( "{}: scanning module (base=0x{:X}, size=0x{:X})\n", name, begin, size_of_image );
+		std::cout.flush( );
+	}
 
 	if ( const auto result = reinterpret_cast<std::uintptr_t>( find_pattern_internal( begin, end, format ? ParseCombo( pattern ).c_str( ) : pattern ) ); result ) {
 		if ( !is_dbg ) {
