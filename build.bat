@@ -3,6 +3,9 @@ setlocal enabledelayedexpansion
 chcp 65001 >nul 2>nul
 title GAMBODJAN Build
 
+:: Always work from the directory where build.bat is located
+cd /d "%~dp0"
+
 echo.
 echo ==========================================
 echo   GAMBODJAN Build Script
@@ -64,6 +67,9 @@ if %ERRORLEVEL% NEQ 0 (
     exit /b 1
 )
 echo [+] VS environment configured (x64)
+
+:: Return to project directory (vcvarsall.bat may change cwd)
+cd /d "%~dp0"
 
 :: ============================
 ::  Find CMake
