@@ -133,6 +133,19 @@ set(PROTOBUF_LIB_SOURCES
     src/core/lib/protobuf/src/google/protobuf/text_format.cc
     src/core/lib/protobuf/src/google/protobuf/unknown_field_set.cc
     src/core/lib/protobuf/src/google/protobuf/wire_format.cc
+    src/core/lib/protobuf/src/google/protobuf/any.pb.cc
+    src/core/lib/protobuf/src/google/protobuf/api.pb.cc
+    src/core/lib/protobuf/src/google/protobuf/descriptor.pb.cc
+    src/core/lib/protobuf/src/google/protobuf/duration.pb.cc
+    src/core/lib/protobuf/src/google/protobuf/empty.pb.cc
+    src/core/lib/protobuf/src/google/protobuf/field_mask.pb.cc
+    src/core/lib/protobuf/src/google/protobuf/source_context.pb.cc
+    src/core/lib/protobuf/src/google/protobuf/struct.pb.cc
+    src/core/lib/protobuf/src/google/protobuf/timestamp.pb.cc
+    src/core/lib/protobuf/src/google/protobuf/type.pb.cc
+    src/core/lib/protobuf/src/google/protobuf/wrappers.pb.cc
+    src/core/lib/protobuf/src/google/protobuf/compiler/importer.cc
+    src/core/lib/protobuf/src/google/protobuf/compiler/parser.cc
 )
 
 # ============================================================

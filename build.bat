@@ -9,8 +9,7 @@ title GAMBODJAN Build
 set "VSWHERE=%ProgramFiles(x86)%\Microsoft Visual Studio\Installer\vswhere.exe"
 if not exist "%VSWHERE%" (
     echo [!] Visual Studio not found
-    echo     Скачай: https://visualstudio.microsoft.com/downloads/
-    echo     При установке выбери "Разработка классических приложений на C++"
+    echo     Download: https://visualstudio.microsoft.com/downloads/
     pause
     exit /b 1
 )
@@ -43,7 +42,7 @@ if %ERRORLEVEL% NEQ 0 (
     if exist "%VS_PATH%\Common7\IDE\CommonExtensions\Microsoft\CMake\CMake\bin\cmake.exe" (
         set "PATH=%VS_PATH%\Common7\IDE\CommonExtensions\Microsoft\CMake\CMake\bin;%PATH%"
     ) else (
-        echo [!] CMake not found. Скачай: https://cmake.org/download/
+        echo [!] CMake not found. Download: https://cmake.org/download/
         pause
         exit /b 1
     )
@@ -51,78 +50,44 @@ if %ERRORLEVEL% NEQ 0 (
 echo [+] CMake OK
 
 :: ============================
-::  Check/Install vcpkg
-:: ============================
-set "VCPKG_DIR=%~dp0vcpkg"
-set "VCPKG_EXE=%VCPKG_DIR%\vcpkg.exe"
-
-if not exist "%VCPKG_EXE%" (
-    echo.
-    echo [*] Устанавливаю vcpkg (нужен для protobuf и curl)...
-    where git >nul 2>nul
-    if !ERRORLEVEL! NEQ 0 (
-        echo [!] Git not found. Скачай: https://git-scm.com/download/win
-        pause
-        exit /b 1
-    )
-    git clone --depth 1 https://github.com/microsoft/vcpkg.git "%VCPKG_DIR%" >nul 2>nul
-    if !ERRORLEVEL! NEQ 0 (
-        echo [!] Не удалось скачать vcpkg
-        pause
-        exit /b 1
-    )
-    call "%VCPKG_DIR%\bootstrap-vcpkg.bat" -disableMetrics >nul 2>nul
-)
-echo [+] vcpkg OK
-
-:: ============================
-::  Install dependencies
-:: ============================
-echo [*] Проверяю зависимости...
-"%VCPKG_EXE%" install protobuf:x64-windows curl:x64-windows >nul 2>nul
-echo [+] Зависимости OK
-
-:: ============================
 ::  Configure
 :: ============================
 echo.
-echo [1/2] Конфигурация CMake...
+echo [1/2] CMake configure...
 if not exist "build" mkdir build
 
-cmake -B build -G "Ninja" ^
-    -DCMAKE_BUILD_TYPE=Release ^
-    -DCMAKE_TOOLCHAIN_FILE="%VCPKG_DIR%\scripts\buildsystems\vcpkg.cmake" >nul 2>nul
+cmake -B build -G "Ninja" -DCMAKE_BUILD_TYPE=Release >nul 2>nul
 
 if %ERRORLEVEL% NEQ 0 (
-    echo [*] Ninja не найден, пробую Visual Studio...
-    
+    echo [*] Ninja not found, trying Visual Studio generator...
+
     set "GEN="
     for %%G in ("Visual Studio 17 2022" "Visual Studio 16 2019") do (
         if not defined GEN (
-            cmake -B build -G "%%~G" -A x64 -DCMAKE_TOOLCHAIN_FILE="%VCPKG_DIR%\scripts\buildsystems\vcpkg.cmake" >nul 2>nul
+            cmake -B build -G "%%~G" -A x64 >nul 2>nul
             if !ERRORLEVEL! EQU 0 set "GEN=%%~G"
         )
     )
-    
+
     if not defined GEN (
         echo [!] CMake configuration failed
-        cmake -B build -G "Visual Studio 17 2022" -A x64 -DCMAKE_TOOLCHAIN_FILE="%VCPKG_DIR%\scripts\buildsystems\vcpkg.cmake"
+        cmake -B build -G "Visual Studio 17 2022" -A x64
         pause
         exit /b 1
     )
     echo [+] Generator: !GEN!
 )
-echo [+] Конфигурация OK
+echo [+] Configure OK
 
 :: ============================
 ::  Build
 :: ============================
 echo.
-echo [2/2] Компиляция...
+echo [2/2] Building...
 cmake --build build --config Release -- /m /v:m
 if %ERRORLEVEL% NEQ 0 (
     echo.
-    echo [!] Ошибка компиляции! Смотри ошибки выше.
+    echo [!] Build failed! Check errors above.
     pause
     exit /b 1
 )
@@ -132,16 +97,15 @@ if %ERRORLEVEL% NEQ 0 (
 :: ============================
 echo.
 echo ==========================================
-echo   ГОТОВО!
+echo   BUILD COMPLETE
 echo ==========================================
 echo.
 
-if exist "release\GAMBODJAN_dll.dll"    echo   GAMBODJAN_dll.dll     - Чит DLL (инжектить в dota2.exe)
-if exist "release\GAMBODJAN.exe"        echo   GAMBODJAN.exe         - Инжектор
-if exist "release\GAMBODJAN_overlay.dll" echo   GAMBODJAN_overlay.dll - Оверлей (без хуков)
-if exist "release\loader.exe"           echo   loader.exe            - Лоадер
+if exist "release\GAMBODJAN_dll.dll"    echo   GAMBODJAN_dll.dll     - Cheat DLL
+if exist "release\GAMBODJAN.exe"        echo   GAMBODJAN.exe         - Injector
+if exist "release\loader.exe"           echo   loader.exe            - Loader
 
 echo.
-echo   Файлы в папке: release\
+echo   Output: release\
 echo.
 pause
