@@ -142,17 +142,32 @@ bool start_init( ) {
 	return true;
 }
 
-bool __stdcall DllMain( HINSTANCE hModule, std::uint8_t reason, void* ) {
-	if ( reason == 1 ) {
-		util::allocate_console( );
-		util::clear_console( );
-		setlocale( 0, "" );
-		global::hModule = hModule;
+static DWORD WINAPI cheat_thread( LPVOID hModule ) {
+	util::allocate_console( );
+	util::clear_console( );
+	setlocale( 0, "" );
+	global::hModule = (HINSTANCE)hModule;
 
 #ifdef _DEBUG
-		spdlog::set_level( spdlog::level::debug );
+	spdlog::set_level( spdlog::level::debug );
 #endif
-		start_init( );
+
+	// Wait for critical game modules to load before initialization
+	while ( !util::get_module_base_wchar( L"client.dll" ) ||
+			!util::get_module_base_wchar( L"tier0.dll" ) ||
+			!util::get_module_base_ansi( "steam_api64.dll" ) ) {
+		Sleep( 500 );
 	}
-	return reason;
+	Sleep( 2000 );
+
+	start_init( );
+	return 0;
+}
+
+bool __stdcall DllMain( HINSTANCE hModule, DWORD reason, void* ) {
+	if ( reason == DLL_PROCESS_ATTACH ) {
+		DisableThreadLibraryCalls( hModule );
+		CreateThread( nullptr, 0, cheat_thread, hModule, 0, nullptr );
+	}
+	return TRUE;
 }
