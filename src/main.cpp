@@ -80,7 +80,10 @@ bool start_init( ) {
 
 	const auto duration_funcs = start_funcs.elapsed( );
 
+	spdlog::info( "Functions resolved in {:.2}s\n", duration_funcs.count( ) );
+
 	spdlog::stopwatch start_hooks;
+	spdlog::info( "Installing hooks...\n" );
 	/*
 	* Hooks
 	*/
@@ -133,7 +136,7 @@ bool start_init( ) {
 	}
 
 	std::cout << "\n";
-	spdlog::debug( "Unlocked all console variables/commands\n\n" );
+	spdlog::info( "Unlocked all console variables/commands\n" );
 
 	spdlog::info( "Init functions took {:.2}s\n", duration_funcs.count( ) );
 	spdlog::info( "Init hooks took {:.2}s\n", start_hooks );

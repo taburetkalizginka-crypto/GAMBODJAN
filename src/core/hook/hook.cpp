@@ -380,15 +380,26 @@ bool hook::install_hook( std::uintptr_t address, LPVOID function, LPVOID* origin
 		init = true;
 	}
 
-	if ( MH_CreateHook( reinterpret_cast<LPVOID>( address ), function, original ) == MH_ERROR_ALREADY_CREATED ) {
-		spdlog::warn( "[hook::install_hook]: Hook {} is already created\n", name );
+	if ( !address ) {
+		spdlog::error( "[hook] {} FAILED - target address is null\n", name );
+		return false;
+	}
+
+	const auto create_status = MH_CreateHook( reinterpret_cast<LPVOID>( address ), function, original );
+	if ( create_status != MH_OK && create_status != MH_ERROR_ALREADY_CREATED ) {
+		spdlog::error( "[hook] {} FAILED - MH_CreateHook error {}\n", name, (int)create_status );
+		return false;
+	}
+	if ( create_status == MH_ERROR_ALREADY_CREATED ) {
+		spdlog::warn( "[hook] {} already created\n", name );
 	}
 	const auto status = MH_EnableHook( reinterpret_cast<LPVOID>( address ) );
 	if ( status == MH_STATUS::MH_OK ) {
 		hook::hooks[ address ] = name;
+		spdlog::info( "[hook] {} OK at 0x{:X}\n", name, address );
 	}
 	else {
-		spdlog::error( "[hook::install_hook]: Hook {} is not installed\n", name );
+		spdlog::error( "[hook] {} FAILED - MH_EnableHook error {}\n", name, (int)status );
 	}
 	return status == MH_STATUS::MH_OK;
 }

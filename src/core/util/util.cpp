@@ -509,13 +509,11 @@ std::uintptr_t util::find_pattern( const char* smodule, const char* pattern, con
 		if ( !is_dbg ) {
 			const auto duration = duration_cast<std::chrono::milliseconds>( std::chrono::high_resolution_clock::now( ) - start );
 
-			spdlog::debug( "{}: ", name ); util::set_console_color( 0xA );
-			std::cout << "0x" << std::hex << result; util::set_console_color( );
-			std::cout << " (" << std::dec << duration.count( ) << "ms)\n";
+			spdlog::info( "{}: 0x{:X} ({}ms)\n", name, result, duration.count( ) );
 		}
 		return result;
 	}
-	if ( is_dbg ) spdlog::debug( "{} not found :(\n", name );
+	if ( !is_dbg ) spdlog::error( "{}: NOT FOUND\n", name );
 	return NULL;
 }
 
@@ -536,13 +534,11 @@ std::uintptr_t util::find_pattern( HINSTANCE pmodule, const char* pattern, const
 		if ( !is_dbg ) {
 			const auto duration = duration_cast<std::chrono::milliseconds>( std::chrono::high_resolution_clock::now( ) - start );
 
-			spdlog::debug( "{}: ", name ); util::set_console_color( 0xA );
-			std::cout << "0x" << std::hex << result; util::set_console_color( );
-			std::cout << " (" << std::dec << duration.count( ) << "ms)\n";
+			spdlog::info( "{}: 0x{:X} ({}ms)\n", name, result, duration.count( ) );
 		}
 		return result;
 	}
-	if ( is_dbg ) spdlog::debug("{} not found :(\n", name );
+	if ( !is_dbg ) spdlog::error( "{}: NOT FOUND\n", name );
 	return NULL;
 }
 
