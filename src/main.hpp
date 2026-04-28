@@ -33,9 +33,6 @@
 #include "core/definitions.h"
 #include "core/schema.h"
 
-#define CURL_STATICLIB
-// Curl libs linked via CMakeLists.txt
-#include "core/lib/libcurl/curl.h"
 #include "core/lib/json.hpp"
 #include "core/lib/minhook/MinHook.h"
 

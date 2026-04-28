@@ -1,17 +1,36 @@
 #include "overwolf.h"
 
-std::size_t write_callback( void* contents, size_t size, size_t nmemb, void* userp ) {
-	( (std::string*)userp )->append( (char*)contents, size * nmemb );
-	return size * nmemb;
+#ifdef GAMBODJAN_WINDOWS
+#include <wininet.h>
+#pragma comment(lib, "wininet.lib")
+#endif
+
+static std::string http_get( const std::string& url_str ) {
+	std::string result;
+#ifdef GAMBODJAN_WINDOWS
+	HINTERNET hSession = InternetOpenA( "GAMBODJAN", INTERNET_OPEN_TYPE_DIRECT, NULL, NULL, 0 );
+	if ( !hSession ) return result;
+	HINTERNET hUrl = InternetOpenUrlA( hSession, url_str.c_str( ), NULL, 0,
+		INTERNET_FLAG_RELOAD | INTERNET_FLAG_NO_CACHE_WRITE, 0 );
+	if ( hUrl ) {
+		char buf[ 4096 ]; DWORD bytesRead = 0;
+		while ( InternetReadFile( hUrl, buf, sizeof( buf ), &bytesRead ) && bytesRead ) {
+			result.append( buf, bytesRead );
+			bytesRead = 0;
+		}
+		InternetCloseHandle( hUrl );
+	}
+	InternetCloseHandle( hSession );
+#endif
+	return result;
 }
 
 void COverWolf::process_lobby_members( ) {
 	auto& gc = CGCClient::get( );
 	if ( &gc && gc.GetLobbyManager( )->lobby_data ) {
 		auto& dotaLobby = gc.GetLobbyManager( )->lobby_data->m_dota_lobby->get_dynamic_lobby( )->so_dynamic_lobby;
-		CURL* curl = curl_easy_init( ); std::string url = "http://127.0.0.1:5000/?players=", read_buf; uint16_t pl_count = 0;
-		curl_easy_setopt( curl, CURLOPT_WRITEFUNCTION, write_callback );
-		curl_easy_setopt( curl, CURLOPT_WRITEDATA, &read_buf );
+		std::string url = "http://127.0.0.1:5000/?players=";
+		uint16_t pl_count = 0;
 
 		for ( auto& member : dotaLobby.all_members( ) ) {
 			if ( !member.has_id( ) || !member.has_name( ) ) continue;
@@ -22,10 +41,7 @@ void COverWolf::process_lobby_members( ) {
 		if ( url[ url.size( ) - 1 ] == ',' ) url.pop_back( );
 		url += "&count=" + std::to_string( pl_count );
 
-		curl_easy_setopt( curl, CURLOPT_URL, url.c_str( ) );
-		curl_easy_perform( curl );
-
-		curl_easy_cleanup( curl );
+		http_get( url );
 	}
 }
 

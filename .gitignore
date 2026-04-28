@@ -1,5 +1,7 @@
 build/
+build_linux/
 build_test/
+out/
 vcpkg/
 *.obj
 *.o

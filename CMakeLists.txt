@@ -1,7 +1,5 @@
-cmake_minimum_required(VERSION 3.16)
+cmake_minimum_required(VERSION 3.15)
 project(GAMBODJAN LANGUAGES CXX C)
-
-include(FetchContent)
 
 if(WIN32)
     set(CMAKE_CXX_STANDARD 20)
@@ -80,14 +78,68 @@ set(MINHOOK_SOURCES
     src/core/lib/minhook/src/hde/hde64.c
 )
 
-# Protobuf generated message sources
+# Protobuf generated message sources (project-specific .pb.cc files)
 file(GLOB PROTOBUF_PB_SOURCES src/core/lib/protobuf/files/*.pb.cc)
+
+# Protobuf library sources (bundled v3.21.12, no external install needed)
+set(PROTOBUF_LIB_SOURCES
+    src/core/lib/protobuf/src/google/protobuf/any_lite.cc
+    src/core/lib/protobuf/src/google/protobuf/arena.cc
+    src/core/lib/protobuf/src/google/protobuf/arenastring.cc
+    src/core/lib/protobuf/src/google/protobuf/arenaz_sampler.cc
+    src/core/lib/protobuf/src/google/protobuf/extension_set.cc
+    src/core/lib/protobuf/src/google/protobuf/generated_enum_util.cc
+    src/core/lib/protobuf/src/google/protobuf/generated_message_tctable_lite.cc
+    src/core/lib/protobuf/src/google/protobuf/generated_message_util.cc
+    src/core/lib/protobuf/src/google/protobuf/implicit_weak_message.cc
+    src/core/lib/protobuf/src/google/protobuf/inlined_string_field.cc
+    src/core/lib/protobuf/src/google/protobuf/io/coded_stream.cc
+    src/core/lib/protobuf/src/google/protobuf/io/io_win32.cc
+    src/core/lib/protobuf/src/google/protobuf/io/strtod.cc
+    src/core/lib/protobuf/src/google/protobuf/io/zero_copy_stream.cc
+    src/core/lib/protobuf/src/google/protobuf/io/zero_copy_stream_impl.cc
+    src/core/lib/protobuf/src/google/protobuf/io/zero_copy_stream_impl_lite.cc
+    src/core/lib/protobuf/src/google/protobuf/map.cc
+    src/core/lib/protobuf/src/google/protobuf/message_lite.cc
+    src/core/lib/protobuf/src/google/protobuf/parse_context.cc
+    src/core/lib/protobuf/src/google/protobuf/repeated_field.cc
+    src/core/lib/protobuf/src/google/protobuf/repeated_ptr_field.cc
+    src/core/lib/protobuf/src/google/protobuf/stubs/bytestream.cc
+    src/core/lib/protobuf/src/google/protobuf/stubs/common.cc
+    src/core/lib/protobuf/src/google/protobuf/stubs/int128.cc
+    src/core/lib/protobuf/src/google/protobuf/stubs/status.cc
+    src/core/lib/protobuf/src/google/protobuf/stubs/statusor.cc
+    src/core/lib/protobuf/src/google/protobuf/stubs/stringpiece.cc
+    src/core/lib/protobuf/src/google/protobuf/stubs/stringprintf.cc
+    src/core/lib/protobuf/src/google/protobuf/stubs/structurally_valid.cc
+    src/core/lib/protobuf/src/google/protobuf/stubs/strutil.cc
+    src/core/lib/protobuf/src/google/protobuf/stubs/time.cc
+    src/core/lib/protobuf/src/google/protobuf/wire_format_lite.cc
+    src/core/lib/protobuf/src/google/protobuf/any.cc
+    src/core/lib/protobuf/src/google/protobuf/descriptor.cc
+    src/core/lib/protobuf/src/google/protobuf/descriptor_database.cc
+    src/core/lib/protobuf/src/google/protobuf/dynamic_message.cc
+    src/core/lib/protobuf/src/google/protobuf/extension_set_heavy.cc
+    src/core/lib/protobuf/src/google/protobuf/generated_message_bases.cc
+    src/core/lib/protobuf/src/google/protobuf/generated_message_reflection.cc
+    src/core/lib/protobuf/src/google/protobuf/generated_message_tctable_full.cc
+    src/core/lib/protobuf/src/google/protobuf/io/printer.cc
+    src/core/lib/protobuf/src/google/protobuf/io/tokenizer.cc
+    src/core/lib/protobuf/src/google/protobuf/map_field.cc
+    src/core/lib/protobuf/src/google/protobuf/message.cc
+    src/core/lib/protobuf/src/google/protobuf/reflection_ops.cc
+    src/core/lib/protobuf/src/google/protobuf/service.cc
+    src/core/lib/protobuf/src/google/protobuf/stubs/substitute.cc
+    src/core/lib/protobuf/src/google/protobuf/text_format.cc
+    src/core/lib/protobuf/src/google/protobuf/unknown_field_set.cc
+    src/core/lib/protobuf/src/google/protobuf/wire_format.cc
+)
 
 # ============================================================
 # Windows targets
 # ============================================================
 if(WIN32)
-    # --- GAMBODJAN.exe (Injector / Launcher — NO full menu) ---
+    # --- GAMBODJAN.exe (Injector / Launcher) ---
     add_executable(GAMBODJAN_Launcher WIN32
         src/main_exe.cpp
         src/gui/menu.cpp
@@ -96,64 +148,7 @@ if(WIN32)
     target_link_libraries(GAMBODJAN_Launcher PRIVATE d3d11 dxgi dwmapi comdlg32)
     set_target_properties(GAMBODJAN_Launcher PROPERTIES OUTPUT_NAME "GAMBODJAN")
 
-    # --- External dependencies for the full DLL ---
-    # protobuf: required for .pb.cc generated message files
-    find_package(Protobuf QUIET)
-    if(NOT Protobuf_FOUND)
-        find_package(PkgConfig QUIET)
-        if(PkgConfig_FOUND)
-            pkg_check_modules(PROTOBUF QUIET protobuf)
-        endif()
-    endif()
-
-    if(Protobuf_FOUND)
-        set(GAMBODJAN_PROTOBUF_TARGET protobuf::libprotobuf)
-    elseif(PROTOBUF_FOUND)
-        set(GAMBODJAN_PROTOBUF_TARGET ${PROTOBUF_LIBRARIES})
-    else()
-        message(STATUS "Protobuf not found — downloading protobuf 3.21.12 via FetchContent...")
-        set(protobuf_BUILD_TESTS OFF CACHE BOOL "" FORCE)
-        set(protobuf_BUILD_CONFORMANCE OFF CACHE BOOL "" FORCE)
-        set(protobuf_BUILD_EXAMPLES OFF CACHE BOOL "" FORCE)
-        set(protobuf_BUILD_PROTOC_BINARIES OFF CACHE BOOL "" FORCE)
-        set(protobuf_MSVC_STATIC_RUNTIME OFF CACHE BOOL "" FORCE)
-        set(protobuf_WITH_ZLIB OFF CACHE BOOL "" FORCE)
-        FetchContent_Declare(
-            protobuf
-            GIT_REPOSITORY https://github.com/protocolbuffers/protobuf.git
-            GIT_TAG        v3.21.12
-            GIT_SHALLOW    TRUE
-            SOURCE_SUBDIR  cmake
-        )
-        FetchContent_MakeAvailable(protobuf)
-        set(GAMBODJAN_PROTOBUF_TARGET libprotobuf)
-    endif()
-
-    # curl: required for overwolf.cc (player lookup)
-    find_package(CURL QUIET)
-
-    if(CURL_FOUND)
-        set(GAMBODJAN_CURL_TARGET CURL::libcurl)
-    else()
-        message(STATUS "CURL not found — downloading curl 8.1.2 via FetchContent...")
-        set(BUILD_CURL_EXE OFF CACHE BOOL "" FORCE)
-        set(BUILD_SHARED_LIBS_SAVE ${BUILD_SHARED_LIBS})
-        set(BUILD_SHARED_LIBS OFF CACHE BOOL "" FORCE)
-        set(BUILD_TESTING OFF CACHE BOOL "" FORCE)
-        set(CURL_USE_SCHANNEL ON CACHE BOOL "" FORCE)
-        set(HTTP_ONLY ON CACHE BOOL "" FORCE)
-        FetchContent_Declare(
-            curl
-            GIT_REPOSITORY https://github.com/curl/curl.git
-            GIT_TAG        curl-8_1_2
-            GIT_SHALLOW    TRUE
-        )
-        FetchContent_MakeAvailable(curl)
-        set(BUILD_SHARED_LIBS ${BUILD_SHARED_LIBS_SAVE} CACHE BOOL "" FORCE)
-        set(GAMBODJAN_CURL_TARGET libcurl)
-    endif()
-
-    # --- GAMBODJAN_dll.dll (REAL cheat DLL — hooks game D3D, full features) ---
+    # --- GAMBODJAN_dll.dll (Cheat DLL) ---
     set(CHEAT_SOURCES
         src/main.cpp
         src/gui/gui.cpp
@@ -179,18 +174,16 @@ if(WIN32)
         ${IMGUI_SOURCES}
         ${MINHOOK_SOURCES}
         ${PROTOBUF_PB_SOURCES}
+        ${PROTOBUF_LIB_SOURCES}
     )
     target_compile_definitions(GAMBODJAN_DLL PRIVATE GAMBODJAN_CHEAT_DLL)
     target_include_directories(GAMBODJAN_DLL PRIVATE
         src/core/lib/protobuf/protobuf
+        src/core/lib/protobuf/src
     )
     target_link_libraries(GAMBODJAN_DLL PRIVATE
         d3d11 dxgi dwmapi wininet ws2_32
     )
-
-    # Link protobuf and curl (found via find_package or fetched via FetchContent)
-    target_link_libraries(GAMBODJAN_DLL PRIVATE ${GAMBODJAN_PROTOBUF_TARGET})
-    target_link_libraries(GAMBODJAN_DLL PRIVATE ${GAMBODJAN_CURL_TARGET})
 
     if(MSVC)
         target_link_options(GAMBODJAN_DLL PRIVATE
@@ -201,19 +194,6 @@ if(WIN32)
         )
     endif()
     set_target_properties(GAMBODJAN_DLL PROPERTIES OUTPUT_NAME "GAMBODJAN_dll")
-
-    # --- GAMBODJAN_overlay.dll (Overlay DLL — standalone, no game hooks) ---
-    # This is the MINIMAL WORKING version: creates a transparent D3D11
-    # overlay window on top of the game, renders the full ImGui menu,
-    # and implements camera hack via writing CFG files.
-    # No pattern scanning, no MinHook, no protobuf, no curl needed.
-    add_library(GAMBODJAN_Overlay SHARED
-        src/dll_main.cpp
-        src/gui/menu.cpp
-        ${IMGUI_SOURCES}
-    )
-    target_link_libraries(GAMBODJAN_Overlay PRIVATE d3d11 dxgi dwmapi)
-    set_target_properties(GAMBODJAN_Overlay PROPERTIES OUTPUT_NAME "GAMBODJAN_overlay")
 
     # --- Loader.exe (kdmapper-based loader) ---
     set(LOADER_SOURCES
@@ -258,11 +238,6 @@ if(WIN32)
         COMMAND ${CMAKE_COMMAND} -E copy_if_different
             $<TARGET_FILE:GAMBODJAN_Loader> ${RELEASE_DIR}/loader.exe
     )
-    add_custom_command(TARGET GAMBODJAN_Overlay POST_BUILD
-        COMMAND ${CMAKE_COMMAND} -E copy_if_different
-            $<TARGET_FILE:GAMBODJAN_Overlay> ${RELEASE_DIR}/GAMBODJAN_overlay.dll
-    )
-    # gdrv.sys is already in release/ folder (pre-built binary)
 
 # ============================================================
 # Linux target — Cross-platform Launcher (GLFW + OpenGL3)
@@ -311,7 +286,6 @@ endif()
 if(WIN32)
     install(TARGETS GAMBODJAN_Launcher RUNTIME DESTINATION bin)
     install(TARGETS GAMBODJAN_DLL LIBRARY DESTINATION bin RUNTIME DESTINATION bin)
-    install(TARGETS GAMBODJAN_Overlay LIBRARY DESTINATION bin RUNTIME DESTINATION bin)
     install(TARGETS GAMBODJAN_Loader RUNTIME DESTINATION bin)
     install(FILES tools/gdrv_mapper/gdrv.sys DESTINATION bin)
 else()
