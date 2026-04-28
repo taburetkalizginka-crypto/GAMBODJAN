@@ -108,14 +108,22 @@ The unified menu (`src/gui/menu.cpp`) includes:
 
 ### Main cheat DLL (Windows)
 
-Requirements: Visual Studio 2022 with C++ workload, CMake
+Requirements: Visual Studio 2022 with C++ workload, CMake 3.16+, Git (for FetchContent)
+
+Protobuf and curl are downloaded automatically via CMake FetchContent if not
+already installed.  If you have vcpkg you can pre-install them to speed up the
+first build:
+
+```bash
+vcpkg install protobuf:x64-windows curl:x64-windows
+```
 
 ```bash
 cmake -B build -G "Visual Studio 17 2022" -A x64
 cmake --build build --config Release
 ```
 
-Output: `build/Release/GAMBODJAN.dll`
+Output: `release/GAMBODJAN_dll.dll`, `release/GAMBODJAN.exe`, `release/GAMBODJAN_overlay.dll`
 
 ### Main cheat SO (Linux)
 
