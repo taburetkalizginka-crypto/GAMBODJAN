@@ -142,6 +142,15 @@ bool start_init( ) {
 	return true;
 }
 
+static int safe_start_init( ) {
+	__try {
+		return start_init( ) ? 0 : 1;
+	}
+	__except ( EXCEPTION_EXECUTE_HANDLER ) {
+		return (int)GetExceptionCode( );
+	}
+}
+
 static DWORD WINAPI cheat_thread( LPVOID hModule ) {
 	util::allocate_console( );
 	util::clear_console( );
@@ -183,11 +192,9 @@ static DWORD WINAPI cheat_thread( LPVOID hModule ) {
 
 	spdlog::info( "All modules loaded, starting init...\n" );
 
-	__try {
-		start_init( );
-	}
-	__except ( EXCEPTION_EXECUTE_HANDLER ) {
-		spdlog::critical( "CRASH during initialization! Exception code: 0x{:X}\n", GetExceptionCode( ) );
+	const int result = safe_start_init( );
+	if ( result > 1 ) {
+		spdlog::critical( "CRASH during initialization! Exception code: 0x{:X}\n", (unsigned)result );
 		spdlog::critical( "This usually means game patterns/offsets are outdated.\n" );
 		MessageBoxA( nullptr, "Cheat crashed during init.\nPatterns may be outdated for this Dota 2 version.",
 			"GAMBODJAN Error", MB_ICONERROR );
