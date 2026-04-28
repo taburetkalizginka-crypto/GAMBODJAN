@@ -479,8 +479,19 @@ void* find_pattern_internal( uintptr_t begin, uintptr_t end, const char* pattern
 	const auto scanEnd = (uint8_t*)end;
 	const size_t last = util::fast_strlen( pattern ) - 1;
 	const auto bad_char_skip = FillShiftTable( pattern, 0xCC );
+	const auto startTime = std::chrono::high_resolution_clock::now( );
+	size_t iterations = 0;
 
-	for ( ; scanPos <= scanEnd; scanPos += bad_char_skip[scanPos[last]] )
+	for ( ; scanPos <= scanEnd; scanPos += bad_char_skip[scanPos[last]] ) {
+		if ( ++iterations % 500000 == 0 ) {
+			auto elapsed = std::chrono::high_resolution_clock::now( ) - startTime;
+			if ( elapsed > std::chrono::seconds( 5 ) ) {
+				spdlog::warn( "Pattern scan timeout after {}ms ({} iterations)\n",
+					std::chrono::duration_cast<std::chrono::milliseconds>( elapsed ).count( ), iterations );
+				std::cout.flush( );
+				return nullptr;
+			}
+		}
 		for ( size_t idx = last; idx >= 0; --idx ) {
 			const uint8_t elem = pattern[idx];
 			if ( elem != 0xCC && elem != scanPos[idx] )
@@ -488,6 +499,7 @@ void* find_pattern_internal( uintptr_t begin, uintptr_t end, const char* pattern
 			if ( idx == 0 )
 				return scanPos;
 		}
+	}
 
 	return nullptr;
 }

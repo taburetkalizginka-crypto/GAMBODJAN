@@ -7,6 +7,10 @@
 #include "core/hook/hook.hpp"
 #include "gui/panorama_gui.h"
 
+#include <dxgi.h>
+#pragma comment(lib, "d3d11.lib")
+#pragma comment(lib, "dxgi.lib")
+
 CGui* pGui = nullptr;
 CGameEntitySystem* g_pGameEntitySystem = nullptr;
 
@@ -21,6 +25,43 @@ if (relative_call && fn)\
 	fn = (decltype(fn))util::get_absolute_address((uintptr_t)fn, 1,5); \
 if(!fn) { spdlog::error( "[FAIL] {}\n", fn_name ); } \
 std::cout.flush();
+
+// Get IDXGISwapChain::Present address via dummy device VMT (index 8)
+static uintptr_t get_present_from_vmt( ) {
+	HWND tempWnd = CreateWindowExA( 0, "STATIC", "", WS_OVERLAPPEDWINDOW, 0, 0, 1, 1, nullptr, nullptr, nullptr, nullptr );
+	if ( !tempWnd ) return 0;
+
+	DXGI_SWAP_CHAIN_DESC sd = {};
+	sd.BufferCount = 1;
+	sd.BufferDesc.Format = DXGI_FORMAT_R8G8B8A8_UNORM;
+	sd.BufferUsage = DXGI_USAGE_RENDER_TARGET_OUTPUT;
+	sd.OutputWindow = tempWnd;
+	sd.SampleDesc.Count = 1;
+	sd.Windowed = TRUE;
+	sd.SwapEffect = DXGI_SWAP_EFFECT_DISCARD;
+
+	IDXGISwapChain* pSwapChain = nullptr;
+	ID3D11Device* pDevice = nullptr;
+	ID3D11DeviceContext* pContext = nullptr;
+	D3D_FEATURE_LEVEL fl;
+	const D3D_FEATURE_LEVEL levels[] = { D3D_FEATURE_LEVEL_11_0 };
+
+	HRESULT hr = D3D11CreateDeviceAndSwapChain( nullptr, D3D_DRIVER_TYPE_HARDWARE, nullptr, 0,
+		levels, 1, D3D11_SDK_VERSION, &sd, &pSwapChain, &pDevice, &fl, &pContext );
+
+	uintptr_t presentAddr = 0;
+	if ( SUCCEEDED( hr ) && pSwapChain ) {
+		void** vtable = *reinterpret_cast<void***>( pSwapChain );
+		presentAddr = reinterpret_cast<uintptr_t>( vtable[8] ); // IDXGISwapChain::Present = VMT index 8
+	}
+
+	if ( pSwapChain ) pSwapChain->Release( );
+	if ( pDevice ) pDevice->Release( );
+	if ( pContext ) pContext->Release( );
+	DestroyWindow( tempWnd );
+
+	return presentAddr;
+}
 
 bool start_init( ) {
 	std::uintptr_t aParticleManager = 0,
@@ -51,11 +92,20 @@ bool start_init( ) {
 
 	/*
 	* STEP 1: Install Present hook FIRST so menu appears even if other things fail
+	* Uses D3D11 VMT (index 8) instead of pattern scan - works on all versions
 	*/
 	spdlog::info( "--- Installing Present hook (menu) ---\n" );
 	std::cout.flush( );
-	DETOUR_PATTERN( "GameOverlayRenderer64.dll", "48 89 6C 24 ?? 48 89 74 24 ?? 41 56 48 83 EC ?? 41 8B E8", "SteamOverlayPresent", Present, true, false );
-	std::cout.flush( );
+	{
+		auto presentAddr = get_present_from_vmt( );
+		if ( presentAddr ) {
+			spdlog::info( "[OK] Present VMT = 0x{:X}\n", presentAddr );
+			hook::install_hook( presentAddr, &hook::functions::Present, &hook::original::fpPresent, "Present" );
+		} else {
+			spdlog::error( "[FAIL] Could not get Present from D3D11 VMT\n" );
+		}
+		std::cout.flush( );
+	}
 
 	/*
 	* STEP 2: Steam API + FrameStageNotify (critical hooks)
@@ -73,9 +123,18 @@ bool start_init( ) {
 		SOFT_CHECK( aSteamGC, "SteamGC" );
 	}
 
-	DETOUR_PATTERN( "client.dll", "E8 ?? ?? ?? ?? 48 8B 4D 90 48 89 7C 24", "CGCClient::BAsyncSendProto", BAsyncSendProto, true, true );
+	{
+		auto addr = util::find_pattern( global::client, "E8 ?? ?? ?? ?? 48 8B 4D 90 48 89 7C 24", "CGCClient::BAsyncSendProto" );
+		if ( addr ) addr = util::get_absolute_address( addr, 1, 5 );
+		if ( addr ) hook::install_hook( addr, &hook::functions::BAsyncSendProto, &hook::original::fpBAsyncSendProto, "BAsyncSendProto" );
+		else spdlog::error( "[FAIL] BAsyncSendProto\n" );
+	}
 	std::cout.flush( );
-	DETOUR_PATTERN( "client.dll", "44 88 44 24 ?? 89 54 24 ?? 55 53 56 57 41 54", "CDOTAInput::CreateMove", CreateMove, true, false );
+	{
+		auto addr = util::find_pattern( global::client, "44 88 44 24 ?? 89 54 24 ?? 55 53 56 57 41 54", "CDOTAInput::CreateMove" );
+		if ( addr ) hook::install_hook( addr, &hook::functions::CreateMove, &hook::original::fpCreateMove, "CreateMove" );
+		else spdlog::error( "[FAIL] CreateMove\n" );
+	}
 	std::cout.flush( );
 
 	if ( aSteamGC )
