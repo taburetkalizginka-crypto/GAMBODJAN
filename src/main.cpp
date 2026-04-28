@@ -28,7 +28,6 @@ bool start_init( ) {
 		aSteamGC = 0;
 	std::uintptr_t** aParticleCollectionVMT = nullptr;
 	spdlog::stopwatch start_init;
-	int errors = 0;
 
 	spdlog::info( "Start init cheat...\n" );
 	std::cout.flush( );
@@ -51,24 +50,71 @@ bool start_init( ) {
 	pGui = new CGui( );
 
 	/*
-	* Use offsets from source2-dumper instead of pattern scanning where possible
+	* STEP 1: Install Present hook FIRST so menu appears even if other things fail
+	*/
+	spdlog::info( "--- Installing Present hook (menu) ---\n" );
+	std::cout.flush( );
+	DETOUR_PATTERN( "GameOverlayRenderer64.dll", "48 89 6C 24 ?? 48 89 74 24 ?? 41 56 48 83 EC ?? 41 8B E8", "SteamOverlayPresent", Present, true, false );
+	std::cout.flush( );
+
+	/*
+	* STEP 2: Steam API + FrameStageNotify (critical hooks)
+	*/
+	spdlog::info( "--- Installing critical hooks ---\n" );
+	std::cout.flush( );
+
+	ISteamClient::GetHSteamPipe = (decltype( ISteamClient::GetHSteamPipe ))util::find_export_address( util::get_module_base_ansi( "steam_api64.dll" ), "GetHSteamPipe" );
+	ISteamClient::GetHSteamUser = (decltype( ISteamClient::GetHSteamUser ))util::find_export_address( util::get_module_base_ansi( "steam_api64.dll" ), "GetHSteamUser" );
+	SOFT_CHECK( ISteamClient::GetHSteamPipe, "GetHSteamPipe" );
+	SOFT_CHECK( ISteamClient::GetHSteamUser, "GetHSteamUser" );
+
+	if ( ISteamClient::GetHSteamPipe && ISteamClient::GetHSteamUser ) {
+		aSteamGC = (std::uintptr_t)ISteamClient::get( ).GetISteamGenericInterface( ISteamClient::GetHSteamPipe( ), ISteamClient::GetHSteamUser( ), "SteamGameCoordinator001" );
+		SOFT_CHECK( aSteamGC, "SteamGC" );
+	}
+
+	DETOUR_PATTERN( "client.dll", "E8 ?? ?? ?? ?? 48 8B 4D 90 48 89 7C 24", "CGCClient::BAsyncSendProto", BAsyncSendProto, true, true );
+	std::cout.flush( );
+	DETOUR_PATTERN( "client.dll", "44 88 44 24 ?? 89 54 24 ?? 55 53 56 57 41 54", "CDOTAInput::CreateMove", CreateMove, true, false );
+	std::cout.flush( );
+
+	if ( aSteamGC )
+		DETOUR_VF( aSteamGC, 2, SGCRetrieveMessage, false );
+
+	DETOUR_VF( CSource2Client::get( ), 29, FrameStageNotify, false );
+	std::cout.flush( );
+
+	/*
+	* STEP 3: Resolve core addresses using offsets
 	*/
 	spdlog::info( "--- Resolving core addresses (offsets) ---\n" );
 	std::cout.flush( );
 
 	{
-		// GameEntitySystem - use offset directly instead of VMT pattern
 		const auto pEntitySystemAddr = (uintptr_t)global::client + source2_dumper::offsets::client_dll::dwGameEntitySystem;
-		if ( util::IsValidPtr( (void*)pEntitySystemAddr ) ) {
-			g_pGameEntitySystem = *reinterpret_cast<CGameEntitySystem**>( pEntitySystemAddr );
-			spdlog::info( "[OK] GameEntitySystem = 0x{:X} (offset 0x{:X})\n", (uintptr_t)g_pGameEntitySystem, source2_dumper::offsets::client_dll::dwGameEntitySystem );
-		} else {
-			spdlog::error( "[FAIL] GameEntitySystem offset 0x{:X} invalid\n", source2_dumper::offsets::client_dll::dwGameEntitySystem );
-			errors++;
-		}
+		g_pGameEntitySystem = *reinterpret_cast<CGameEntitySystem**>( pEntitySystemAddr );
+		spdlog::info( "[OK] GameEntitySystem = 0x{:X} (offset 0x{:X})\n", (uintptr_t)g_pGameEntitySystem, source2_dumper::offsets::client_dll::dwGameEntitySystem );
 		std::cout.flush( );
 
-		// ParticleManager - still needs pattern scan (no offset available)
+		if ( g_pGameEntitySystem ) {
+			g_pEntityListener = CMemAlloc::GetInstance( )->allocate<EntityEventListener>( );
+			g_pGameEntitySystem->m_vecEntityEvents.AddToTail( g_pEntityListener );
+			spdlog::info( "[OK] Entity listener registered\n" );
+		} else {
+			spdlog::warn( "[WARN] GameEntitySystem is null - entity listener not registered\n" );
+		}
+		std::cout.flush( );
+	}
+
+	/*
+	* STEP 4: Pattern scans (may hang on outdated sigs - non-critical)
+	*/
+	spdlog::info( "--- Scanning patterns (non-critical) ---\n" );
+	std::cout.flush( );
+
+	{
+		spdlog::info( "Scanning client.dll for ParticleManager...\n" );
+		std::cout.flush( );
 		auto pmPattern = util::find_pattern( global::client, "7E 0B 41 8D 42 F1 A9 FB FF FF FF 75 0B 41 8B C9 E8 ?? ?? ?? ?? 48 8B D8 E8", "CDOTA_ParticleManager" );
 		std::cout.flush( );
 		if ( pmPattern ) {
@@ -77,30 +123,36 @@ bool start_init( ) {
 				global::patterns::DOTAParticleManager = GAB( aParticleManager, 3, 7 );
 		}
 		SOFT_CHECK( aParticleManager, "ParticleManager" );
-		if ( !aParticleManager ) errors++;
 
-		// NetChannel VMT - still needs pattern scan
+		spdlog::info( "Scanning networksystem.dll for NetChannel VMT...\n" );
+		std::cout.flush( );
 		aNetchanVMT = util::find_pattern( "networksystem.dll", "40 53 56 57 41 56 48 83 EC ?? 45 33 F6 48 8D 71", "NetChannel VMT" );
 		std::cout.flush( );
 		SOFT_CHECK( aNetchanVMT, "NetchanVMT" );
-		if ( !aNetchanVMT ) errors++;
 
-		// ParticleCollection VMT - still needs pattern scan
+		if ( aNetchanVMT ) {
+			auto netchanPtr = GAB( aNetchanVMT + 0x15, 3, 7 );
+			if ( netchanPtr ) {
+				DETOUR_VF( netchanPtr, 86, PostReceivedNetMessage, true );
+				DETOUR_VF( netchanPtr, 69, SendNetMessage, true );
+			} else {
+				spdlog::error( "[FAIL] NetchanVMT resolve failed\n" );
+			}
+		}
+
+		spdlog::info( "Scanning particles.dll for ParticleCollection VMT...\n" );
+		std::cout.flush( );
 		auto pcPattern = util::find_pattern( "particles.dll", "48 8D 05 ?? ?? ?? ?? 48 89 01 0F 57 C0", "ParticleCollection VMT" );
 		std::cout.flush( );
 		if ( pcPattern )
 			aParticleCollectionVMT = (uintptr_t**)GAB( pcPattern, 3, 7 );
 		SOFT_CHECK( aParticleCollectionVMT, "ParticleCollectionVMT" );
-		if ( !aParticleCollectionVMT ) errors++;
 	}
 
 	spdlog::info( "--- Resolving functions (patterns) ---\n" );
 	std::cout.flush( );
 
 	spdlog::stopwatch start_funcs;
-	/*
-	* Get functions - use soft checks to continue past failures
-	*/
 	{
 		FIND_FN_SOFT( "client.dll", global::patterns::CSlider__SetValue, "40 57 48 83 EC ?? 0F 29 74 24 ?? 48 8B F9 F3 0F 10 71", "CPanel2D::SetValue", false );
 		FIND_FN_SOFT( "client.dll", global::patterns::CDOTA_UI_HeroImage__SetHeroName, "48 89 5C 24 ?? 57 48 83 EC 20 48 8B FA 48 8B D9 E8 ?? ?? ?? ?? 80 B8 ?? ?? ?? ?? ?? 75 17 80 B8 ?? ?? ?? ?? ?? 75 0E 80 B8 ?? ?? ?? ?? ?? B9 ?? ?? ?? ?? 74 05 B9 ?? ?? ?? ?? 48 03 C8 48 8B D7 E8 ?? ?? ?? ?? 39 83", "CDOTA_UI_HeroImage::SetHeroName", false );
@@ -124,56 +176,15 @@ bool start_init( ) {
 
 		if ( CDOTAItemSchema::GetItemDefByIndex )
 			CDOTAItemSchema::GetItemDefArrIdx = AddressWrapper( CDOTAItemSchema::GetItemDefByIndex ).get_offset( 0x16 ).get_address_from_instruction_ptr( 1 );
-
-		ISteamClient::GetHSteamPipe = (decltype( ISteamClient::GetHSteamPipe ))util::find_export_address( util::get_module_base_ansi( "steam_api64.dll" ), "GetHSteamPipe" );
-		ISteamClient::GetHSteamUser = (decltype( ISteamClient::GetHSteamUser ))util::find_export_address( util::get_module_base_ansi( "steam_api64.dll" ), "GetHSteamUser" );
-		SOFT_CHECK( ISteamClient::GetHSteamPipe, "GetHSteamPipe" );
-		SOFT_CHECK( ISteamClient::GetHSteamUser, "GetHSteamUser" );
 	}
 
 	const auto duration_funcs = start_funcs.elapsed( );
 	spdlog::info( "Functions resolved in {:.2}s\n", duration_funcs.count( ) );
 	std::cout.flush( );
 
-	spdlog::info( "--- Installing hooks ---\n" );
-	std::cout.flush( );
-
-	spdlog::stopwatch start_hooks;
 	/*
-	* Hooks
+	* STEP 5: Unlock console variables
 	*/
-	{
-		if ( ISteamClient::GetHSteamPipe && ISteamClient::GetHSteamUser ) {
-			aSteamGC = (std::uintptr_t)ISteamClient::get( ).GetISteamGenericInterface( ISteamClient::GetHSteamPipe( ), ISteamClient::GetHSteamUser( ), "SteamGameCoordinator001" );
-			SOFT_CHECK( aSteamGC, "SteamGC" );
-		}
-
-		DETOUR_PATTERN( "client.dll", "E8 ?? ?? ?? ?? 48 8B 4D 90 48 89 7C 24", "CGCClient::BAsyncSendProto", BAsyncSendProto, true, true );
-		DETOUR_PATTERN( "client.dll", "44 88 44 24 ?? 89 54 24 ?? 55 53 56 57 41 54", "CDOTAInput::CreateMove", CreateMove, true, false );
-		DETOUR_PATTERN( "GameOverlayRenderer64.dll", "48 89 6C 24 ?? 48 89 74 24 ?? 41 56 48 83 EC ?? 41 8B E8", "SteamOverlayPresent", Present, true, false );
-
-		if ( aNetchanVMT ) {
-			auto netchanPtr = GAB( aNetchanVMT + 0x15, 3, 7 );
-			if ( netchanPtr ) {
-				DETOUR_VF( netchanPtr, 86, PostReceivedNetMessage, true );
-				DETOUR_VF( netchanPtr, 69, SendNetMessage, true );
-			} else {
-				spdlog::error( "[FAIL] NetchanVMT resolve failed\n" );
-			}
-		}
-		if ( aSteamGC )
-			DETOUR_VF( aSteamGC, 2, SGCRetrieveMessage, false );
-
-		DETOUR_VF( CSource2Client::get( ), 29, FrameStageNotify, false );
-
-		if ( g_pGameEntitySystem ) {
-			g_pEntityListener = CMemAlloc::GetInstance( )->allocate<EntityEventListener>( );
-			g_pGameEntitySystem->m_vecEntityEvents.AddToTail( g_pEntityListener );
-			spdlog::info( "[OK] Entity listener registered\n" );
-		}
-		std::cout.flush( );
-	}
-
 	for ( auto& ccmd : ICVar::get( ).ccommands( ) ) {
 
 		if ( !( &ccmd ) || !ccmd.m_name )
@@ -205,11 +216,9 @@ bool start_init( ) {
 #endif
 	}
 
-	std::cout << "\n";
 	spdlog::info( "Unlocked all console variables/commands\n" );
-
-	spdlog::info( "Init functions: {:.2}s | Init hooks: {:.2}s | Total: {:.2}s\n", duration_funcs.count( ), start_hooks.elapsed( ).count( ), start_init.elapsed( ).count( ) );
-	spdlog::info( "=== GAMBODJAN initialized ===\n\n" );
+	spdlog::info( "Total init: {:.2}s\n", start_init.elapsed( ).count( ) );
+	spdlog::info( "=== GAMBODJAN initialized (F1 - open menu) ===\n\n" );
 	std::cout.flush( );
 
 	return true;
