@@ -242,10 +242,23 @@ end:
 long hook::functions::Present( IDXGISwapChain* pSwapchain, UINT SyncInterval, UINT Flags ) {
 	static bool imgui_inited = false;
 	static bool style_applied = false;
-	if ( !imgui_inited ) {
-		if ( pGui->init( pSwapchain ) ) imgui_inited = true;
+	static bool first_call = true;
+	if ( first_call ) {
+		spdlog::info( "[Present] Hook called! SwapChain=0x{:X}\n", (uintptr_t)pSwapchain );
+		std::cout.flush( );
+		first_call = false;
 	}
-	if ( imgui_inited && !style_applied ) {
+	if ( !imgui_inited ) {
+		if ( pGui && pGui->init( pSwapchain ) ) {
+			imgui_inited = true;
+			spdlog::info( "[Present] ImGui initialized, WndProc hooked. Press INSERT to toggle menu.\n" );
+			std::cout.flush( );
+		}
+	}
+	if ( !imgui_inited ) {
+		return reinterpret_cast<decltype( &Present )>( hook::original::fpPresent )( pSwapchain, SyncInterval, Flags );
+	}
+	if ( !style_applied ) {
 		menu::ApplyStyle( );
 		style_applied = true;
 	}

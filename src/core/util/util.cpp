@@ -483,9 +483,9 @@ void* find_pattern_internal( uintptr_t begin, uintptr_t end, const char* pattern
 	size_t iterations = 0;
 
 	for ( ; scanPos <= scanEnd; scanPos += bad_char_skip[scanPos[last]] ) {
-		if ( ++iterations % 500000 == 0 ) {
+		if ( ++iterations % 100000 == 0 ) {
 			auto elapsed = std::chrono::high_resolution_clock::now( ) - startTime;
-			if ( elapsed > std::chrono::seconds( 5 ) ) {
+			if ( elapsed > std::chrono::seconds( 3 ) ) {
 				spdlog::warn( "Pattern scan timeout after {}ms ({} iterations)\n",
 					std::chrono::duration_cast<std::chrono::milliseconds>( elapsed ).count( ), iterations );
 				std::cout.flush( );
